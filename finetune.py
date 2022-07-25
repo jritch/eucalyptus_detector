@@ -27,11 +27,12 @@ print("Torchvision Version: ",torchvision.__version__)
 data_dir = "./img3"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "mobilenet_v3_large"
+model_name = "mobilenet_v2"
 
 #Path to save the model
-model_save_path = "./models/"+datetime.now.strftime("%Y%m%d-%H%M")+"/mobilenet_v3_large_finetuned.pt"
+#model_save_path = "./models/"+datetime.now.strftime("%Y%m%d-%H%M")+"/mobilenet_v3_large_finetuned.pt"
 #model_save_path = "./models/2022-06-28/mobilenet_v3_large_finetuned.pt"
+model_save_path = "./models/2022-07-23/mobilenet_v2_finetuned.pt"
 
 # Number of classes in the dataset
 num_classes = 3
@@ -140,17 +141,20 @@ def eval_model(phase, dataloaders, debug_mode):
     y_pred = []
     y_true = []
 
-    model_ft = models.mobilenet_v3_large()
+    model_ft = models.mobilenet_v2()
     last_channel = 1280
     num_classes = 3
-    model_ft.classifier[3] = nn.Linear(last_channel,num_classes)
+    if (model_name == "mobilenet_v2"):
+        model_ft.classifier[1] = nn.Linear(last_channel,num_classes)
+    else:
+        model_ft.classifier[3] = nn.Linear(last_channel,num_classes)
     model_ft.load_state_dict(torch.load(model_save_path))
     model_ft.eval()
 
     # iterate over test data
     for inputs, labels in dataloaders[phase]:
         inputs = inputs.to(device)
-        tensorToImage(inputs[0])
+        #tensorToImage(inputs[0])
         labels = labels.to(device)
 
         output = model_ft(inputs)
@@ -260,11 +264,15 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         """
         model_ft = models.mobilenet_v2(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
+        '''
         num_ftrs = model_ft.classifier[1].in_features
         model_ft.classifier = nn.Sequential(
             nn.Dropout(p=0.2),
             nn.Linear(num_ftrs, num_classes),
         )
+        '''
+        num_ftrs = model_ft.classifier[1].in_features
+        model_ft.classifier[1] = nn.Linear(num_ftrs,num_classes)
         input_size = 224
 
     else:
@@ -303,7 +311,7 @@ print("Initializing Datasets and Dataloaders...")
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x]) for x in ['train', 'val']}
 # Create training and validation dataloaders
 dataloaders_dict = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=0) for x in ['train', 'val']}
-print("Dataloaders dict", dataloaders_dict['val'][0])
+#print("Dataloaders dict", dataloaders_dict['val'][0])
 # Detect if we have a GPU available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
