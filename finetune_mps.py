@@ -9,30 +9,19 @@ import torch.optim as optim
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
-from datetime import date, datetime
 import matplotlib.pyplot as plt
 import time
 import os
 import copy
-import sklearn.metrics
-from sklearn.metrics import confusion_matrix, classification_report
-import pandas as pd
-import seaborn as sn
-from PIL import Image
 print("PyTorch Version: ",torch.__version__)
 print("Torchvision Version: ",torchvision.__version__)
 
 # Top level data directory. Here we assume the format of the directory conforms
 #   to the ImageFolder structure
-data_dir = "./img3"
+data_dir = "../tree_detector_finetune/img2"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "mobilenet_v2"
-
-#Path to save the model
-#model_save_path = "./models/"+datetime.now.strftime("%Y%m%d-%H%M")+"/mobilenet_v3_large_finetuned.pt"
-#model_save_path = "./models/2022-06-28/mobilenet_v3_large_finetuned.pt"
-model_save_path = "./models/2022-07-23/mobilenet_v2_finetuned.pt"
+model_name = "mobilenet_v3_large"
 
 # Number of classes in the dataset
 num_classes = 3
@@ -46,6 +35,17 @@ num_epochs = 15
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
 feature_extract = False
+
+# https://stackoverflow.com/questions/58297197/how-to-change-activation-layer-in-pytorch-pretrained-module
+
+
+def replace_layer(module, old, new):
+    for name, m in module.named_children():
+        if isinstance(m, old):
+            setattr(module, name, new)
+        else:
+            replace_layer(m, old, new)
+
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
     since = time.time()
@@ -106,7 +106,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 running_corrects += torch.sum(preds == labels.data)
 
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
+            epoch_acc = running_corrects.float() / len(dataloaders[phase].dataset)
 
             print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
 
@@ -126,7 +126,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     # load best model weights
     model.load_state_dict(best_model_wts)
 
-    torch.save(best_model_wts, model_save_path)
+    torch.save(best_model_wts, "mobilenet_v3_large_finetuned_img2.pt")
 
     return model, val_acc_history
 
@@ -134,52 +134,6 @@ def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
-
-#only run evaluation - obtains the confusion matrix
-#confusion matrix rows = ground truth labels (background, eucalyptus, tree), columns = predicted labels in same order
-def eval_model(phase, dataloaders, debug_mode):
-    y_pred = []
-    y_true = []
-
-    model_ft = models.mobilenet_v2()
-    last_channel = 1280
-    num_classes = 3
-    if (model_name == "mobilenet_v2"):
-        model_ft.classifier[1] = nn.Linear(last_channel,num_classes)
-    else:
-        model_ft.classifier[3] = nn.Linear(last_channel,num_classes)
-    model_ft.load_state_dict(torch.load(model_save_path))
-    model_ft.eval()
-
-    # iterate over test data
-    for inputs, labels in dataloaders[phase]:
-        inputs = inputs.to(device)
-        #tensorToImage(inputs[0])
-        labels = labels.to(device)
-
-        output = model_ft(inputs)
-        #print('output', output)
-        _, preds = torch.max(output, 1)
-        #print('preds', preds)
-        y_pred.extend(preds) # Save Prediction
-        
-        labels = labels.data.numpy()
-        y_true.extend(labels) # Save Truth
-
-    # Build confusion matrix
-    cf_matrix = confusion_matrix(y_true, y_pred)
-    print(cf_matrix)
-    print(classification_report(y_true, y_pred))
-    
-def tensorToImage(input_tensor):
-    img = np.array(input_tensor)
-    img[0] = img[0] * 0.229 + 0.485
-    img[1] = img[1] * 0.224 + 0.456
-    img[2] = img[2] * 0.225 + 0.406
-    img = np.transpose(img, axes=[2, 1, 0])
-    print("IMG", img)
-    plt.imshow(img)
-    plt.savefig('img.jpeg')
 
 def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
     # Initialize these variables which will be set in this if statement. Each of these
@@ -247,13 +201,25 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         input_size = 299
 
     elif model_name == "mobilenet_v3_large":
+        """ mobilenet_v3_large
+        what's tricky here is that the final layer, which we want to replace and retrain
+        is inside a nn.Sequential layer (which I think is used to group together a bunch of layers under a common hierarchy with a single name)
+        so we have to figure out how to 
+        """
         model_ft = models.mobilenet_v3_large(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.classifier[0].in_features
         last_channel = 1280
         lastconv_output_channels = 960
-        #only replace the final layer
-        model_ft.classifier[3] = nn.Linear(last_channel,num_classes)
+        model_ft.classifier = nn.Sequential(
+            nn.Linear(lastconv_output_channels, last_channel),
+            nn.Hardswish(inplace=True),
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(last_channel, num_classes),
+        )
+        model_ft.apply(lambda m: replace_layer(m, nn.Hardswish, nn.SiLU()))
+        model_ft.apply(lambda m: replace_layer(m, nn.Hardsigmoid, nn.Sigmoid()))
+
         input_size = 224
 
     elif model_name == "mobilenet_v2":
@@ -264,15 +230,11 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         """
         model_ft = models.mobilenet_v2(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
-        '''
         num_ftrs = model_ft.classifier[1].in_features
         model_ft.classifier = nn.Sequential(
             nn.Dropout(p=0.2),
             nn.Linear(num_ftrs, num_classes),
         )
-        '''
-        num_ftrs = model_ft.classifier[1].in_features
-        model_ft.classifier[1] = nn.Linear(num_ftrs,num_classes)
         input_size = 224
 
     else:
@@ -289,7 +251,6 @@ print(model_ft)
 
 # Data augmentation and normalization for training
 # Just normalization for validation
-# Can do an experiment where we just resize, instead of doing random resized crop, on the training set
 data_transforms = {
     'train': transforms.Compose([
         transforms.RandomResizedCrop(input_size),
@@ -311,10 +272,10 @@ print("Initializing Datasets and Dataloaders...")
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x]) for x in ['train', 'val']}
 # Create training and validation dataloaders
 dataloaders_dict = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=0) for x in ['train', 'val']}
-#print("Dataloaders dict", dataloaders_dict['val'][0])
 
 # Detect if we have a GPU available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 # Send the model to GPU
 model_ft = model_ft.to(device)
@@ -345,7 +306,3 @@ criterion = nn.CrossEntropyLoss()
 
 # Train and evaluate
 model_ft, hist = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name=="inception"))
-
-# Get the confusion matrix on the validation set and the training set
-eval_model('val', dataloaders_dict, True)
-eval_model('train', dataloaders_dict, True)

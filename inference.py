@@ -100,6 +100,36 @@ def visualize_and_save_map(
     cv2.imshow('Result', img_concat)
     cv2.waitKey(1)
     if save_name is not None:
+        cv2.imwrite(f"{save_name}.jpg", img_concat)
+
+def visualize_and_save_map(
+    result, orig_image, gt_idx=None, class_idx=None, save_name=None
+):
+    # Put class label text on the result.
+    if class_idx is not None:
+        cv2.putText(
+            result, 
+            f"Pred: {str(classes[int(class_idx)])}", (5, 20), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2,
+            cv2.LINE_AA
+        )
+    if gt_idx is not None:
+        cv2.putText(
+            result, 
+            f"GT: {str(classes[int(gt_idx)])}", (5, 40), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2,
+            cv2.LINE_AA
+        )
+    # cv2.imshow('CAM', result/255.)
+    orig_image = cv2.resize(orig_image, (224, 224))
+    # cv2.imshow('Original image', orig_image)
+    img_concat = cv2.hconcat([
+        np.array(result, dtype=np.uint8), 
+        np.array(orig_image, dtype=np.uint8)
+    ])
+    cv2.imshow('Result', img_concat)
+    cv2.waitKey(1)
+    if save_name is not None:
         cv2.imwrite(f"{save_name}", img_concat)
 '''
 model = torchvision.models.mobilenet_v3_large()
