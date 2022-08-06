@@ -18,7 +18,7 @@ import numpy
 
 # Reference - https://pytorch.org/tutorials/beginner/data_loading_tutorial.html
 
-classes = ["background","eucalyptus","tree"]
+classes = ["background","eucalyptus","other tree"]
 
 class StubDataset(Dataset):
     def __init__(self,dir):
@@ -32,12 +32,8 @@ class StubDataset(Dataset):
         if (self.filenames[idx] == '.DS_Store'):
             return None
         img_name = os.path.join(self.dir,self.filenames[idx])
-        img = Image.open(img_name)
-        # get width and height
-        width = img.width
-        height = img.height
   
-        TC0 = transforms.Compose([transforms.Resize(224), transforms.CenterCrop(224)])
+        #TC0 = transforms.Compose([transforms.Resize(224), transforms.CenterCrop(224)])
         #TC = transforms.Compose([transforms.ToTensor()])
         TC = transforms.Compose([transforms.Resize(224), transforms.CenterCrop(224), transforms.ToTensor(),  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
         #TC = transforms.Compose([transforms.CenterCrop(min(width, height)), transforms.Resize(224), transforms.ToTensor(),  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
@@ -132,17 +128,33 @@ def visualize_and_save_map(
     if save_name is not None:
         cv2.imwrite(f"{save_name}", img_concat)
 '''
-model = torchvision.models.mobilenet_v3_large()
+model_name = 'mobilenetv3'
+if model_name == 'mobilenetv3':
+    model = torchvision.models.mobilenet_v3_large()
 
-last_channel = 1280
-lastconv_output_channels = 960
-num_classes = 3
+    last_channel = 1280
+    lastconv_output_channels = 960
+    num_classes = 3
 
-model.classifier[3] = nn.Linear(last_channel,num_classes)
+    model.classifier[3] = nn.Linear(last_channel,num_classes)
 
-#"./models/2022-06-28/mobilenet_v3_large_finetuned.pt"
-model.load_state_dict(torch.load("./models/2022-06-28/mobilenet_v3_large_finetuned.pt"))
-#model.load_state_dict(torch.load("./unity_integration/mobilenet_v3_large_finetuned.pt"))
+    #"./models/2022-06-28/mobilenet_v3_large_finetuned.pt"
+    model.load_state_dict(torch.load("./models/2022-06-28/mobilenet_v3_large_finetuned.pt"))
+    #model.load_state_dict(torch.load("./unity_integration/mobilenet_v3_large_finetuned.pt"))
+
+elif model_name == 'mobilenetv2':
+    model = torchvision.models.mobilenet_v2()
+
+    last_channel = 1280
+    num_classes = 3
+
+    model.classifier[1] = nn.Linear(last_channel,num_classes)
+
+    model.load_state_dict(torch.load("./models/2022-07-23/mobilenet_v2_finetuned.pt"))
+    model.eval()
+    #x = torch.zeros(1, 3, 244, 244)
+    #print(model(x))
+
 model.eval()
 
 #mod = nn.Sequential(*list(model.children())[:-1])
@@ -171,42 +183,58 @@ weight_softmax = np.squeeze(params[-4].data.cpu().numpy())
 def inference():
 
     #Note: Change this to your path
-    #data = StubDataset(dir="/Users/nagrawal/Documents/SmartPrimer/Smart Primer User Testing Location Photos")
-    data = StubDataset(dir="/Users/nagrawal/Documents/Masters/SmartPrimer/testphotos")
+    observers = ["andrea_euc", "andrea_other", "elizabeth", "trevor"]
+    #observers = ["alan", "andrea_euc", "andrea_other", "elizabeth", "niki", "trevor", "yubin"]
     y_true, y_pred = [], []
 
-    for i in range(len(data)):
-        data_item = data[i]
-        if data_item != None:
-            image = data_item["image"]
-            filename = data_item["filename"]
-            print(filename + "," + classes[model(image.reshape(1,3,224,224)).argmax()])
-            print('PRED ORIGINAL', model(image.reshape(1,3,224,224)))
-            pred = model(image.reshape(1,3,224,224)).argmax()
-            y_pred.append(pred)
-            '''
-            #print('blobs', features_blobs)
-            # Generate class activation mapping for the top1 prediction.
-            #fb = mod(image.reshape(1,3,224,224))
-            #fb = fb.cpu().detach().numpy()
-            CAMs = returnCAM(features_blobs[-1], weight_softmax, pred)
-            # File name to save the resulting CAM image with.
-            save_name = './models/2022-06-28/cam/'+filename
-            # Show and save the results.
-            image = cv2.imread(data_item["img_name"])
-            orig_image = image.copy()
-            height, width, _ = orig_image.shape
-            result = apply_color_map(CAMs, width, height, orig_image)
-            
-            df = pd.read_csv("output.csv", index_col='filename')
-            ground_truth = classes.index(df.loc[filename]['label'])
-            y_true.append(ground_truth)
-            visualize_and_save_map(result, orig_image, ground_truth, pred, save_name)
+    for observer in observers:
+        data = StubDataset(dir="/Users/nagrawal/Documents/Masters/SmartPrimer/clicked_images/"+observer)
+        #data = StubDataset(dir="/Users/nagrawal/Documents/Masters/SmartPrimer/testphotos")
+
+        for i in range(len(data)):
+            data_item = data[i]
+            if data_item != None:
+                image = data_item["image"]
+                filename = data_item["filename"]
+                
+                '''
+                #print('blobs', features_blobs)
+                # Generate class activation mapping for the top1 prediction.
+                #fb = mod(image.reshape(1,3,224,224))
+                #fb = fb.cpu().detach().numpy()
+                CAMs = returnCAM(features_blobs[-1], weight_softmax, pred)
+                # File name to save the resulting CAM image with.
+                save_name = './models/2022-06-28/full_data/cam/'+filename
+                # Show and save the results.
+                image = cv2.imread(data_item["img_name"])
+                orig_image = image.copy()
+                height, width, _ = orig_image.shape
+                result = apply_color_map(CAMs, width, height, orig_image)
+                '''
+                df = pd.read_csv("/Users/nagrawal/Documents/Masters/SmartPrimer/clicked_images/ground_truth/"+observer+"_output_multi_label.csv", index_col='filename')
+                for label in ["background", "eucalyptus", "other tree"]:
+                    curr_label = df.loc[filename][label]
+                    #bark = df.loc[filename]["bark"]
+                    #leaves = df.loc[filename]["leaves"]
+                    #far_off_trees = df.loc[filename]["far_off_trees"]
+                    if curr_label == 1:
+                        ground_truth = classes.index(label)
+
+                #ignore background class, ignore bark and leaves closeups
+                #True is 1, False is 0
+                #if (ground_truth != 0) and (not bark) and (not leaves) and (not far_off_trees):
+                #if (ground_truth != 0):
+                y_true.append(ground_truth)
+                print(observer+"/"+filename + "," + classes[model(image.reshape(1,3,224,224)).argmax()])
+                #print('PRED ORIGINAL', model(image.reshape(1,3,224,224)))
+                pred = model(image.reshape(1,3,224,224)).argmax()
+                y_pred.append(pred)
+                #visualize_and_save_map(result, orig_image, ground_truth, pred, save_name)
             
     cf_matrix = confusion_matrix(y_true, y_pred)
     print(cf_matrix)
     print(classification_report(y_true, y_pred))
-    '''
+    
 inference()
 
 
