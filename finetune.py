@@ -24,18 +24,19 @@ print("Torchvision Version: ",torchvision.__version__)
 
 # Top level data directory. Here we assume the format of the directory conforms
 #   to the ImageFolder structure
-data_dir = "./img3"
+data_dir = "/Users/nagrawal/Documents/Masters/SmartPrimer/img4"
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
-model_name = "mobilenet_v2"
+model_name = "mobilenet_v3_large"
 
 #Path to save the model
 #model_save_path = "./models/"+datetime.now.strftime("%Y%m%d-%H%M")+"/mobilenet_v3_large_finetuned.pt"
 #model_save_path = "./models/2022-06-28/mobilenet_v3_large_finetuned.pt"
-model_save_path = "./models/2022-07-23/mobilenet_v2_finetuned.pt"
+#model_save_path = "./models/2022-07-23/mobilenet_v2_finetuned.pt"
+model_save_path = "./models/2022-08-05/mobilenet_v3_large_finetuned.pt"
 
 # Number of classes in the dataset
-num_classes = 3
+num_classes = 2
 
 # Batch size for training (change depending on how much memory you have)
 batch_size = 8
